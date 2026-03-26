@@ -1,9 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:quill_keys/quill.dart';
 
-// Uses the built-in qutebrowser profile as the default config.
-// Switch to vimProfileToml or load a custom TOML file for different bindings.
-
 // ---------------------------------------------------------------------------
 // Entry point
 // ---------------------------------------------------------------------------
@@ -13,11 +10,28 @@ void main() {
 }
 
 // ---------------------------------------------------------------------------
-// Root app — QuillScope wraps everything so keybindings are global.
+// Profiles
 // ---------------------------------------------------------------------------
 
-// Qutebrowser theme: black, green (#00ff00), purple (#6b00ff).
-final _qutebrowserTheme = ThemeData(
+enum DemoProfile {
+  vim('Vim'),
+  josh("Josh's defaults");
+
+  const DemoProfile(this.label);
+  final String label;
+
+  String get toml => switch (this) {
+        vim => vimProfileToml,
+        josh => qutebrowserProfileToml,
+      };
+}
+
+// ---------------------------------------------------------------------------
+// Themes
+// ---------------------------------------------------------------------------
+
+// Josh's theme: black, green (#00ff00), purple (#6b00ff).
+final _joshTheme = ThemeData(
   brightness: Brightness.dark,
   scaffoldBackgroundColor: Colors.black,
   colorScheme: const ColorScheme.dark(
@@ -75,6 +89,10 @@ final _defaultTheme = ThemeData(
   useMaterial3: true,
 );
 
+// ---------------------------------------------------------------------------
+// Root app
+// ---------------------------------------------------------------------------
+
 class QuillDemoApp extends StatefulWidget {
   const QuillDemoApp({super.key});
 
@@ -83,21 +101,29 @@ class QuillDemoApp extends StatefulWidget {
 }
 
 class _QuillDemoAppState extends State<QuillDemoApp> {
-  bool _qbTheme = false;
+  bool _useQbTheme = false;
+  DemoProfile _profile = DemoProfile.vim;
 
-  void _toggleTheme() => setState(() => _qbTheme = !_qbTheme);
+  void _toggleTheme() => setState(() => _useQbTheme = !_useQbTheme);
+
+  void _setProfile(DemoProfile p) => setState(() => _profile = p);
 
   @override
   Widget build(BuildContext context) {
-    final config = QuillConfig.fromToml(qutebrowserProfileToml);
+    final config = QuillConfig.fromToml(_profile.toml);
 
     return MaterialApp(
       title: 'Quill Demo',
       debugShowCheckedModeBanner: false,
-      theme: _qbTheme ? _qutebrowserTheme : _defaultTheme,
+      theme: _useQbTheme ? _joshTheme : _defaultTheme,
       home: QuillScope(
+        key: ValueKey(_profile), // force rebuild on profile switch
         config: config,
-        child: _DemoShell(onToggleTheme: _toggleTheme),
+        child: _DemoShell(
+          onToggleTheme: _toggleTheme,
+          profile: _profile,
+          onProfileChanged: _setProfile,
+        ),
       ),
     );
   }
@@ -108,9 +134,15 @@ class _QuillDemoAppState extends State<QuillDemoApp> {
 // ---------------------------------------------------------------------------
 
 class _DemoShell extends StatefulWidget {
-  const _DemoShell({required this.onToggleTheme});
+  const _DemoShell({
+    required this.onToggleTheme,
+    required this.profile,
+    required this.onProfileChanged,
+  });
 
   final VoidCallback onToggleTheme;
+  final DemoProfile profile;
+  final ValueChanged<DemoProfile> onProfileChanged;
 
   @override
   State<_DemoShell> createState() => _DemoShellState();
@@ -134,6 +166,12 @@ class _DemoShellState extends State<_DemoShell>
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) _registerActions();
     });
+  }
+
+  void _cycleProfile() {
+    final values = DemoProfile.values;
+    final next = values[(widget.profile.index + 1) % values.length];
+    widget.onProfileChanged(next);
   }
 
   /// Guard: only run scroll actions when the controller is attached.
@@ -243,6 +281,10 @@ class _DemoShellState extends State<_DemoShell>
         _tabController.animateTo(2);
         setState(() => _lastAction = 'Switched to Insert tab');
       },
+      // vim profile binds "i" to this
+      'enter-insert': () {
+        setState(() => _lastAction = 'Enter insert (i) — focus a text field');
+      },
     });
   }
 
@@ -261,6 +303,31 @@ class _DemoShellState extends State<_DemoShell>
           title: const Text('Quill Demo'),
           backgroundColor: Theme.of(context).appBarTheme.backgroundColor ??
               Theme.of(context).colorScheme.inversePrimary,
+          actions: [
+            Padding(
+              padding: const EdgeInsets.only(right: 12),
+              child: QuillHint(
+                actionName: 'cycle-profile',
+                onHint: () => _cycleProfile(),
+                child: DropdownButton<DemoProfile>(
+                  value: widget.profile,
+                  underline: const SizedBox.shrink(),
+                  dropdownColor: Theme.of(context).colorScheme.surface,
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.onSurface,
+                    fontSize: 13,
+                  ),
+                  items: [
+                    for (final p in DemoProfile.values)
+                      DropdownMenuItem(value: p, child: Text(p.label)),
+                  ],
+                  onChanged: (p) {
+                    if (p != null) widget.onProfileChanged(p);
+                  },
+                ),
+              ),
+            ),
+          ],
           bottom: TabBar(
             controller: _tabController,
             tabs: [
@@ -285,12 +352,16 @@ class _DemoShellState extends State<_DemoShell>
             _ActionsTab(
               counter: _counter,
               lastAction: _lastAction,
+              profile: widget.profile,
             ),
             _ScrollTab(
               scrollController: _scrollController,
               lastAction: _lastAction,
             ),
-            _InsertTab(lastAction: _lastAction),
+            _InsertTab(
+              lastAction: _lastAction,
+              profile: widget.profile,
+            ),
           ],
         ),
         bottomNavigationBar: _StatusBarBand(),
@@ -339,10 +410,12 @@ class _ActionsTab extends StatelessWidget {
   const _ActionsTab({
     required this.counter,
     required this.lastAction,
+    required this.profile,
   });
 
   final int counter;
   final String lastAction;
+  final DemoProfile profile;
 
   @override
   Widget build(BuildContext context) {
@@ -440,7 +513,7 @@ class _ActionsTab extends StatelessWidget {
           ),
 
           const Spacer(),
-          const _KeyHelpCard(),
+          _KeyHelpCard(profile: profile),
         ],
       ),
     );
@@ -494,9 +567,10 @@ class _ScrollTab extends StatelessWidget {
 // ---------------------------------------------------------------------------
 
 class _InsertTab extends StatefulWidget {
-  const _InsertTab({required this.lastAction});
+  const _InsertTab({required this.lastAction, required this.profile});
 
   final String lastAction;
+  final DemoProfile profile;
 
   @override
   State<_InsertTab> createState() => _InsertTabState();
@@ -536,10 +610,14 @@ class _InsertTabState extends State<_InsertTab> {
             style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
           ),
           const SizedBox(height: 8),
-          const Text(
-            'Click into the field below — Quill automatically detects the '
-            'text input and switches to INSERT mode. Press Escape or Alt+i '
-            'to return to NORMAL mode. Watch the status bar at the bottom.',
+          Text(
+            widget.profile == DemoProfile.vim
+                ? 'Click a field or press i to enter INSERT mode. '
+                  'Press Escape (or jk) to return to NORMAL. '
+                  'Watch the status bar at the bottom.'
+                : 'Click into a field — Quill auto-detects text input and '
+                  'switches to INSERT mode. Press Escape or Alt+i '
+                  'to return to NORMAL. Watch the status bar.',
           ),
           const SizedBox(height: 24),
           QuillHint(
@@ -569,7 +647,7 @@ class _InsertTabState extends State<_InsertTab> {
             ),
           ),
           const Spacer(),
-          const _KeyHelpCard(),
+          _KeyHelpCard(profile: widget.profile),
         ],
       ),
     );
@@ -580,23 +658,40 @@ class _InsertTabState extends State<_InsertTab> {
 // Key help reference card shown at the bottom of tabs.
 // ---------------------------------------------------------------------------
 
+const _vimBindings = [
+  ('j/k', 'Scroll'),
+  ('Ctrl+d/u', 'Half-page'),
+  ('gg', 'Top'),
+  ('G', 'Bottom'),
+  ('gt/gT', 'Next/prev tab'),
+  ('i', 'Insert mode'),
+  ('f', 'Hints'),
+  ('Esc', 'Normal mode'),
+  ('jk', 'Leave insert'),
+];
+
+const _joshBindings = [
+  ('j/k', 'Scroll'),
+  ('e/u', 'Half-page'),
+  ('gg', 'Top'),
+  ('G', 'Bottom'),
+  ('J/K', 'Next/prev tab'),
+  ('h/l', 'Back/forward'),
+  ('f', 'Hints'),
+  ('D', 'Theme toggle'),
+  ('Esc', 'Normal mode'),
+  ('Alt+i', 'Leave insert'),
+];
+
 class _KeyHelpCard extends StatelessWidget {
-  const _KeyHelpCard();
+  const _KeyHelpCard({required this.profile});
+
+  final DemoProfile profile;
 
   @override
   Widget build(BuildContext context) {
-    const bindings = [
-      ('j/k', 'Scroll'),
-      ('e/u', 'Half-page'),
-      ('gg', 'Top'),
-      ('G', 'Bottom'),
-      ('J/K', 'Next/prev tab'),
-      ('h/l', 'Back/forward'),
-      ('f', 'Hints'),
-      ('D', 'Theme toggle'),
-      ('Esc', 'Normal mode'),
-      ('Alt+i', 'Leave insert'),
-    ];
+    final bindings =
+        profile == DemoProfile.vim ? _vimBindings : _joshBindings;
 
     return Card(
       child: Padding(

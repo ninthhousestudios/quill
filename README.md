@@ -2,6 +2,12 @@
 
 Vim-style modal keybinding package for Flutter desktop apps. Modes, sequential key chords, hint overlays, and TOML configuration — modeled after [qutebrowser](https://qutebrowser.org/).
 
+View the Flutter web example app:
+[https://ninthhouse.studio/quill/](https://ninthhouse.studio/quill/)
+
+Note: if you use qutebrowser, it will not really work. Likewise if you use some kind of
+vim-mode, but most "standard" browsers should serve the example just fine.
+
 ## Features
 
 - **Modal input**: Normal, Insert, and Hint modes with a mode stack. Define custom modes by extending `QuillMode`.
