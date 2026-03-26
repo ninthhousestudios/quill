@@ -1,26 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:quill_keys/quill.dart';
 
-// ---------------------------------------------------------------------------
-// TOML config — defines all keybindings for the demo app.
-// ---------------------------------------------------------------------------
-
-const _kTomlConfig = '''
-[normal]
-j = "scroll-down"
-k = "scroll-up"
-f = "hint-activate"
-i = "enter-insert"
-
-[insert]
-Escape = "normal-mode"
-
-[normal."gt"]
-action = "next-tab"
-
-[normal."gT"]
-action = "prev-tab"
-''';
+// Uses the built-in qutebrowser profile as the default config.
+// Switch to vimProfileToml or load a custom TOML file for different bindings.
 
 // ---------------------------------------------------------------------------
 // Entry point
@@ -34,23 +16,88 @@ void main() {
 // Root app — QuillScope wraps everything so keybindings are global.
 // ---------------------------------------------------------------------------
 
-class QuillDemoApp extends StatelessWidget {
+// Qutebrowser theme: black, green (#00ff00), purple (#6b00ff).
+final _qutebrowserTheme = ThemeData(
+  brightness: Brightness.dark,
+  scaffoldBackgroundColor: Colors.black,
+  colorScheme: const ColorScheme.dark(
+    primary: Color(0xFF00FF00),
+    secondary: Color(0xFF6B00FF),
+    surface: Color(0xFF111111),
+    onPrimary: Colors.black,
+    onSecondary: Colors.white,
+    onSurface: Color(0xFF00FF00),
+  ),
+  appBarTheme: const AppBarTheme(
+    backgroundColor: Color(0xFF111111),
+    foregroundColor: Color(0xFF00FF00),
+  ),
+  tabBarTheme: const TabBarThemeData(
+    labelColor: Color(0xFF00FF00),
+    unselectedLabelColor: Color(0xFF6B00FF),
+    indicatorColor: Color(0xFF00FF00),
+  ),
+  cardTheme: const CardThemeData(
+    color: Color(0xFF111111),
+  ),
+  elevatedButtonTheme: ElevatedButtonThemeData(
+    style: ElevatedButton.styleFrom(
+      backgroundColor: const Color(0xFF6B00FF),
+      foregroundColor: Colors.white,
+    ),
+  ),
+  outlinedButtonTheme: OutlinedButtonThemeData(
+    style: OutlinedButton.styleFrom(
+      foregroundColor: const Color(0xFF00FF00),
+      side: const BorderSide(color: Color(0xFF6B00FF)),
+    ),
+  ),
+  inputDecorationTheme: const InputDecorationTheme(
+    labelStyle: TextStyle(color: Color(0xFF6B00FF)),
+    hintStyle: TextStyle(color: Color(0xFF444444)),
+    enabledBorder: OutlineInputBorder(
+      borderSide: BorderSide(color: Color(0xFF6B00FF)),
+    ),
+    focusedBorder: OutlineInputBorder(
+      borderSide: BorderSide(color: Color(0xFF00FF00), width: 2),
+    ),
+  ),
+  textTheme: const TextTheme(
+    bodyMedium: TextStyle(color: Color(0xFF00FF00)),
+    bodyLarge: TextStyle(color: Color(0xFF00FF00)),
+    displayMedium: TextStyle(color: Color(0xFF00FF00)),
+  ),
+  useMaterial3: true,
+);
+
+final _defaultTheme = ThemeData(
+  colorScheme: ColorScheme.fromSeed(seedColor: Colors.indigo),
+  useMaterial3: true,
+);
+
+class QuillDemoApp extends StatefulWidget {
   const QuillDemoApp({super.key});
 
   @override
+  State<QuillDemoApp> createState() => _QuillDemoAppState();
+}
+
+class _QuillDemoAppState extends State<QuillDemoApp> {
+  bool _qbTheme = false;
+
+  void _toggleTheme() => setState(() => _qbTheme = !_qbTheme);
+
+  @override
   Widget build(BuildContext context) {
-    final config = QuillConfig.fromToml(_kTomlConfig);
+    final config = QuillConfig.fromToml(qutebrowserProfileToml);
 
     return MaterialApp(
       title: 'Quill Demo',
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.indigo),
-        useMaterial3: true,
-      ),
+      theme: _qbTheme ? _qutebrowserTheme : _defaultTheme,
       home: QuillScope(
         config: config,
-        child: const _DemoShell(),
+        child: _DemoShell(onToggleTheme: _toggleTheme),
       ),
     );
   }
@@ -61,7 +108,9 @@ class QuillDemoApp extends StatelessWidget {
 // ---------------------------------------------------------------------------
 
 class _DemoShell extends StatefulWidget {
-  const _DemoShell();
+  const _DemoShell({required this.onToggleTheme});
+
+  final VoidCallback onToggleTheme;
 
   @override
   State<_DemoShell> createState() => _DemoShellState();
@@ -87,45 +136,73 @@ class _DemoShellState extends State<_DemoShell>
     });
   }
 
+  /// Guard: only run scroll actions when the controller is attached.
+  void _scroll(double Function(ScrollPosition pos) target,
+      {Duration duration = const Duration(milliseconds: 150),
+      String label = ''}) {
+    if (!_scrollController.hasClients) return;
+    _scrollController.animateTo(
+      target(_scrollController.position).clamp(0.0, double.infinity),
+      duration: duration,
+      curve: Curves.easeOut,
+    );
+    if (label.isNotEmpty) setState(() => _lastAction = label);
+  }
+
   void _registerActions() {
     final ctrl = QuillScope.of(context);
     ctrl.registerActions({
-      'scroll-down': () {
-        final target =
-            (_scrollController.offset + 80).clamp(0.0, double.infinity);
-        _scrollController.animateTo(
-          target,
-          duration: const Duration(milliseconds: 150),
-          curve: Curves.easeOut,
-        );
-        setState(() => _lastAction = 'Scrolled down');
-      },
-      'scroll-up': () {
-        final target =
-            (_scrollController.offset - 80).clamp(0.0, double.infinity);
-        _scrollController.animateTo(
-          target,
-          duration: const Duration(milliseconds: 150),
-          curve: Curves.easeOut,
-        );
-        setState(() => _lastAction = 'Scrolled up');
-      },
-      'enter-insert': () {
-        QuillScope.of(context).enterInsertMode();
-        setState(() => _lastAction = 'Entered INSERT mode (press Escape to leave)');
-      },
+      'scroll-down': () => _scroll(
+            (p) => p.pixels + 80,
+            label: 'Scrolled down',
+          ),
+      'scroll-up': () => _scroll(
+            (p) => p.pixels - 80,
+            label: 'Scrolled up',
+          ),
+      'scroll-half-down': () => _scroll(
+            (p) => p.pixels + 300,
+            duration: const Duration(milliseconds: 200),
+            label: 'Half-page scroll down (e)',
+          ),
+      'scroll-half-up': () => _scroll(
+            (p) => p.pixels - 300,
+            duration: const Duration(milliseconds: 200),
+            label: 'Half-page scroll up (u)',
+          ),
+      'scroll-top': () => _scroll(
+            (_) => 0,
+            duration: const Duration(milliseconds: 300),
+            label: 'Scroll to top (gg)',
+          ),
+      'scroll-bottom': () => _scroll(
+            (p) => p.maxScrollExtent,
+            duration: const Duration(milliseconds: 300),
+            label: 'Scroll to bottom (G)',
+          ),
       'next-tab': () {
         _tabController.animateTo(
           (_tabController.index + 1) % _tabController.length,
         );
-        setState(() => _lastAction = 'Next tab (gt)');
+        setState(() => _lastAction = 'Next tab (J)');
       },
       'prev-tab': () {
         _tabController.animateTo(
           (_tabController.index - 1 + _tabController.length) %
               _tabController.length,
         );
-        setState(() => _lastAction = 'Prev tab (gT)');
+        setState(() => _lastAction = 'Prev tab (K)');
+      },
+      'back': () => setState(() => _lastAction = 'Back (h/H)'),
+      'forward': () => setState(() => _lastAction = 'Forward (l/L)'),
+      'zoom-in': () => setState(() => _lastAction = 'Zoom in (+/=)'),
+      'zoom-out': () => setState(() => _lastAction = 'Zoom out (-)'),
+      'toggle-statusbar': () => setState(() => _lastAction = 'Toggle statusbar (xs)'),
+      'toggle-tabs': () => setState(() => _lastAction = 'Toggle tabs (xt)'),
+      'toggle-chrome': () => setState(() => _lastAction = 'Toggle chrome (xx)'),
+      'toggle-dark-mode': () {
+        widget.onToggleTheme();
+        setState(() => _lastAction = 'Toggled theme (D)');
       },
       'increment': () {
         setState(() {
@@ -154,6 +231,18 @@ class _DemoShellState extends State<_DemoShell>
           ),
         );
       },
+      'goto-tab-actions': () {
+        _tabController.animateTo(0);
+        setState(() => _lastAction = 'Switched to Actions tab');
+      },
+      'goto-tab-scroll': () {
+        _tabController.animateTo(1);
+        setState(() => _lastAction = 'Switched to Scroll tab');
+      },
+      'goto-tab-insert': () {
+        _tabController.animateTo(2);
+        setState(() => _lastAction = 'Switched to Insert tab');
+      },
     });
   }
 
@@ -170,13 +259,23 @@ class _DemoShellState extends State<_DemoShell>
       child: Scaffold(
         appBar: AppBar(
           title: const Text('Quill Demo'),
-          backgroundColor: Theme.of(context).colorScheme.inversePrimary,
+          backgroundColor: Theme.of(context).appBarTheme.backgroundColor ??
+              Theme.of(context).colorScheme.inversePrimary,
           bottom: TabBar(
             controller: _tabController,
-            tabs: const [
-              Tab(text: 'Actions'),
-              Tab(text: 'Scroll'),
-              Tab(text: 'Insert'),
+            tabs: [
+              QuillHint(
+                actionName: 'goto-tab-actions',
+                child: const Tab(text: 'Actions'),
+              ),
+              QuillHint(
+                actionName: 'goto-tab-scroll',
+                child: const Tab(text: 'Scroll'),
+              ),
+              QuillHint(
+                actionName: 'goto-tab-insert',
+                child: const Tab(text: 'Insert'),
+              ),
             ],
           ),
         ),
@@ -209,7 +308,7 @@ class _StatusBarBand extends StatelessWidget {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     return ColoredBox(
-      color: scheme.inversePrimary,
+      color: scheme.surface,
       child: SafeArea(
         top: false,
         child: Padding(
@@ -218,12 +317,12 @@ class _StatusBarBand extends StatelessWidget {
             modeStyle: TextStyle(
               fontWeight: FontWeight.bold,
               fontSize: 13,
-              color: scheme.onSurface,
+              color: scheme.primary,
             ),
             chordStyle: TextStyle(
               fontFamily: 'monospace',
               fontSize: 13,
-              color: scheme.primary,
+              color: scheme.secondary,
             ),
           ),
         ),
@@ -281,8 +380,9 @@ class _ActionsTab extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 4),
-          const Center(
-            child: Text('counter', style: TextStyle(color: Colors.grey)),
+          Center(
+            child: Text('counter',
+                style: TextStyle(color: Theme.of(context).hintColor)),
           ),
           const SizedBox(height: 24),
 
@@ -368,7 +468,8 @@ class _ScrollTab extends StatelessWidget {
           padding: const EdgeInsets.all(12),
           child: Text(
             lastAction,
-            style: const TextStyle(color: Colors.grey, fontSize: 12),
+            style: TextStyle(
+                color: Theme.of(context).hintColor, fontSize: 12),
           ),
         ),
         Expanded(
@@ -392,10 +493,25 @@ class _ScrollTab extends StatelessWidget {
 // Tab 3 — text field to demonstrate Insert mode auto-detection.
 // ---------------------------------------------------------------------------
 
-class _InsertTab extends StatelessWidget {
+class _InsertTab extends StatefulWidget {
   const _InsertTab({required this.lastAction});
 
   final String lastAction;
+
+  @override
+  State<_InsertTab> createState() => _InsertTabState();
+}
+
+class _InsertTabState extends State<_InsertTab> {
+  final FocusNode _field1Focus = FocusNode();
+  final FocusNode _field2Focus = FocusNode();
+
+  @override
+  void dispose() {
+    _field1Focus.dispose();
+    _field2Focus.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -409,7 +525,7 @@ class _InsertTab extends StatelessWidget {
             child: Padding(
               padding: const EdgeInsets.all(12),
               child: Text(
-                lastAction,
+                widget.lastAction,
                 style: const TextStyle(fontSize: 13),
               ),
             ),
@@ -422,24 +538,34 @@ class _InsertTab extends StatelessWidget {
           const SizedBox(height: 8),
           const Text(
             'Click into the field below — Quill automatically detects the '
-            'text input and switches to INSERT mode. Press Escape to return '
-            'to NORMAL mode. Watch the status bar at the bottom.',
+            'text input and switches to INSERT mode. Press Escape or Alt+i '
+            'to return to NORMAL mode. Watch the status bar at the bottom.',
           ),
           const SizedBox(height: 24),
-          const TextField(
-            decoration: InputDecoration(
-              labelText: 'Type here',
-              hintText: 'Focus me to enter INSERT mode automatically',
-              border: OutlineInputBorder(),
+          QuillHint(
+            actionName: 'focus-field-1',
+            onHint: () => _field1Focus.requestFocus(),
+            child: TextField(
+              focusNode: _field1Focus,
+              decoration: const InputDecoration(
+                labelText: 'Type here',
+                hintText: 'Focus me to enter INSERT mode automatically',
+                border: OutlineInputBorder(),
+              ),
+              maxLines: 3,
             ),
-            maxLines: 3,
           ),
           const SizedBox(height: 16),
-          const TextField(
-            decoration: InputDecoration(
-              labelText: 'Another field',
-              hintText: 'Tab between fields — mode follows focus',
-              border: OutlineInputBorder(),
+          QuillHint(
+            actionName: 'focus-field-2',
+            onHint: () => _field2Focus.requestFocus(),
+            child: TextField(
+              focusNode: _field2Focus,
+              decoration: const InputDecoration(
+                labelText: 'Another field',
+                hintText: 'Tab between fields — mode follows focus',
+                border: OutlineInputBorder(),
+              ),
             ),
           ),
           const Spacer(),
@@ -460,13 +586,16 @@ class _KeyHelpCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     const bindings = [
-      ('j', 'Scroll down'),
-      ('k', 'Scroll up'),
-      ('f', 'Hint mode'),
-      ('i', 'Enter insert mode'),
-      ('gt', 'Next tab'),
-      ('gT', 'Prev tab'),
+      ('j/k', 'Scroll'),
+      ('e/u', 'Half-page'),
+      ('gg', 'Top'),
+      ('G', 'Bottom'),
+      ('J/K', 'Next/prev tab'),
+      ('h/l', 'Back/forward'),
+      ('f', 'Hints'),
+      ('D', 'Theme toggle'),
       ('Esc', 'Normal mode'),
+      ('Alt+i', 'Leave insert'),
     ];
 
     return Card(
@@ -499,9 +628,9 @@ class _KeyHelpCard extends StatelessWidget {
                         ),
                         TextSpan(
                           text: ' $desc',
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 12,
-                            color: Colors.grey,
+                            color: Theme.of(context).hintColor,
                           ),
                         ),
                       ],

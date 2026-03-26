@@ -9,6 +9,14 @@ sealed class QuillMode {
 
   /// Human-readable name for this mode, shown in the status bar.
   String get name;
+
+  /// Two modes are equal if they are the same type.
+  /// Override in custom modes that carry state.
+  @override
+  bool operator ==(Object other) => runtimeType == other.runtimeType;
+
+  @override
+  int get hashCode => runtimeType.hashCode;
 }
 
 /// The default resting mode. Key bindings are active.

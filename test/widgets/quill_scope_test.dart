@@ -10,14 +10,17 @@ import 'package:quill_keys/src/widgets/quill_scope.dart';
 // Helpers
 // ---------------------------------------------------------------------------
 
-/// Minimal config with the supplied [normal] bindings (TOML key strings).
-QuillConfig configWith(Map<String, String> normal) {
-  final modeBindings = normal.map(
-    (k, v) => MapEntry(KeyChord.parse(k), v),
-  );
-  return QuillConfig(
-    bindings: {const NormalMode(): modeBindings},
-  );
+/// Minimal config with mode-specific bindings.
+QuillConfig configWith(Map<String, String> normal,
+    {Map<String, String>? insert}) {
+  final bindings = <QuillMode, Map<KeyChord, String>>{};
+  bindings[const NormalMode()] =
+      normal.map((k, v) => MapEntry(KeyChord.parse(k), v));
+  if (insert != null) {
+    bindings[const InsertMode()] =
+        insert.map((k, v) => MapEntry(KeyChord.parse(k), v));
+  }
+  return QuillConfig(bindings: bindings);
 }
 
 /// Wrap [child] in a QuillScope with [config] and optional [actions].
@@ -144,14 +147,18 @@ void main() {
   });
 
   // ---------------------------------------------------------------------------
-  // 5. Escape returns to normal mode
+  // 5. Escape in insert mode fires insert-mode binding and returns to normal
   // ---------------------------------------------------------------------------
-  testWidgets('Escape returns to normal mode', (tester) async {
+  testWidgets('Escape returns to normal mode from insert mode', (tester) async {
     late QuillController controller;
 
     await tester.pumpWidget(
       scopeWidget(
-        config: configWith({'<Escape>': 'normal-mode'}),
+        // Escape bound in BOTH modes — normal and insert.
+        config: configWith(
+          {'<Escape>': 'normal-mode'},
+          insert: {'<Escape>': 'normal-mode'},
+        ),
         child: Builder(
           builder: (context) {
             controller = QuillScope.of(context);
@@ -161,30 +168,51 @@ void main() {
       ),
     );
 
-    // Manually push InsertMode (simulating e.g. 'i' binding or auto-detect).
+    // Push InsertMode.
     controller.modeStack.push(InsertMode());
     await tester.pump();
     expect(controller.currentMode, isA<InsertMode>());
 
-    // In InsertMode, handleKeyEvent passes keys through. We need to
-    // temporarily pop back so the Escape binding fires. The canonical flow
-    // is: Escape is bound in NormalMode to "normal-mode", which calls
-    // modeStack.reset(). But if we're IN InsertMode, keys are ignored by
-    // the controller so the binding never fires.
-    //
-    // The correct approach used by the design is to bind Escape in *normal*
-    // mode — but the spec says "bind Escape to normal-mode, send Escape,
-    // verify back in NormalMode after entering InsertMode". The intended
-    // test flow therefore is: pop InsertMode first (so we're in Normal),
-    // then Escape resets the stack. Let's do that honestly — pop via the
-    // public API, then press Escape.
-    controller.modeStack.pop();
-    await tester.pump();
-    expect(controller.currentMode, isA<NormalMode>());
-
+    // Press Escape — should match the insert-mode binding and return to Normal.
     await tester.sendKeyDownEvent(LogicalKeyboardKey.escape);
     await tester.sendKeyUpEvent(LogicalKeyboardKey.escape);
 
     expect(controller.currentMode, isA<NormalMode>());
+  });
+
+  // ---------------------------------------------------------------------------
+  // 6. Unbound keys in insert mode pass through
+  // ---------------------------------------------------------------------------
+  testWidgets('unbound keys in insert mode pass through', (tester) async {
+    late QuillController controller;
+    var actionCalled = false;
+
+    await tester.pumpWidget(
+      scopeWidget(
+        config: configWith(
+          {'j': 'scroll-down'},
+          insert: {'<Escape>': 'normal-mode'},
+        ),
+        actions: {'scroll-down': () => actionCalled = true},
+        child: Builder(
+          builder: (context) {
+            controller = QuillScope.of(context);
+            return const SizedBox();
+          },
+        ),
+      ),
+    );
+
+    // Push InsertMode.
+    controller.modeStack.push(InsertMode());
+    await tester.pump();
+
+    // Press 'j' — bound in normal mode but NOT in insert mode.
+    // Should pass through (not trigger scroll-down).
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.keyJ);
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.keyJ);
+
+    expect(actionCalled, isFalse);
+    expect(controller.currentMode, isA<InsertMode>());
   });
 }

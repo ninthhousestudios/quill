@@ -21,3 +21,5 @@ export 'src/widgets/quill_scope.dart';
 export 'src/widgets/quill_hint.dart';
 export 'src/widgets/hint_overlay.dart';
 export 'src/widgets/status_bar.dart';
+export 'src/defaults/qutebrowser_profile.dart';
+export 'src/defaults/vim_profile.dart';

@@ -53,9 +53,11 @@ class QuillController extends ChangeNotifier {
   }
 
   /// Unregister a [HintEntry]. Called by [QuillHint] on dispose.
+  ///
+  /// Does NOT call [notifyListeners] because this runs during widget teardown
+  /// when the tree may be locked. The hint is leaving — no rebuild needed.
   void unregisterHint(HintEntry entry) {
     _hints.remove(entry);
-    notifyListeners();
   }
 
   /// Generate labels for the current hint list using [config.hintChars].
@@ -108,10 +110,6 @@ class QuillController extends ChangeNotifier {
   KeyEventResult handleKeyEvent(KeyEvent event) {
     if (event is! KeyDownEvent) return KeyEventResult.ignored;
 
-    // In insert mode, let everything through — the focused text field handles
-    // keys directly.
-    if (modeStack.current is InsertMode) return KeyEventResult.ignored;
-
     final key = _keyString(event);
     if (key == null) return KeyEventResult.ignored;
 
@@ -126,6 +124,8 @@ class QuillController extends ChangeNotifier {
         notifyListeners();
         return KeyEventResult.handled;
       case NoMatch():
+        // In insert mode, unmatched keys pass through to text fields.
+        // Matched keys (above) still fire — e.g. Escape → normal-mode.
         return KeyEventResult.ignored;
     }
   }
@@ -182,9 +182,10 @@ class QuillController extends ChangeNotifier {
     }
 
     if (shiftHeld && label.length == 1) {
-      // <S-a> style — feed 'Shift' then the letter.
-      final _ = keyMatcher.feed('Shift', modeStack.current);
-      return label.toLowerCase();
+      // Uppercase letter — return as-is. In TOML, "H" means Shift+h.
+      // The <S-a> syntax feeds ['Shift', 'a'] as two tokens, but bare
+      // uppercase letters like H, J, K, L, D, G are single trie nodes.
+      return label; // already uppercase from keyLabel
     }
 
     // Plain printable character.
@@ -317,6 +318,8 @@ class QuillScope extends StatefulWidget {
 
 class _QuillScopeState extends State<QuillScope> {
   late QuillController _controller;
+  final FocusNode _focusNode = FocusNode(debugLabel: 'QuillScope');
+  QuillMode _previousMode = const NormalMode();
 
   @override
   void initState() {
@@ -335,7 +338,15 @@ class _QuillScopeState extends State<QuillScope> {
   }
 
   void _onControllerChange() {
-    if (mounted) setState(() {});
+    if (!mounted) return;
+    // When leaving InsertMode, reclaim focus from the text field so that
+    // subsequent keypresses route through QuillScope, not the field.
+    final current = _controller.currentMode;
+    if (_previousMode is InsertMode && current is! InsertMode) {
+      _focusNode.requestFocus();
+    }
+    _previousMode = current;
+    setState(() {});
   }
 
   void _onFocusChange() {
@@ -374,6 +385,7 @@ class _QuillScopeState extends State<QuillScope> {
   void dispose() {
     _controller.removeListener(_onControllerChange);
     FocusManager.instance.removeListener(_onFocusChange);
+    _focusNode.dispose();
     _controller.dispose();
     super.dispose();
   }
@@ -383,6 +395,7 @@ class _QuillScopeState extends State<QuillScope> {
     return _QuillInherited(
       controller: _controller,
       child: Focus(
+        focusNode: _focusNode,
         autofocus: true,
         onKeyEvent: (_, event) => _controller.handleKeyEvent(event),
         child: widget.child,
