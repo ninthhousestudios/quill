@@ -7,11 +7,13 @@ import 'mode.dart';
 class QuillConfig {
   final Map<QuillMode, Map<KeyChord, String>> bindings;
   final Duration chordTimeout;
+  final Duration whichKeyDelay;
   final String hintChars;
 
   const QuillConfig({
     this.bindings = const {},
     this.chordTimeout = const Duration(milliseconds: 1500),
+    this.whichKeyDelay = const Duration(milliseconds: 400),
     this.hintChars = 'asdfghjkl',
   });
 
@@ -29,6 +31,7 @@ class QuillConfig {
 
     // --- settings ---
     Duration chordTimeout = const Duration(milliseconds: 1500);
+    Duration whichKeyDelay = const Duration(milliseconds: 400);
     String hintChars = 'asdfghjkl';
 
     final settings = doc['settings'];
@@ -36,6 +39,10 @@ class QuillConfig {
       final timeoutMs = settings['chord_timeout_ms'];
       if (timeoutMs is int) {
         chordTimeout = Duration(milliseconds: timeoutMs);
+      }
+      final whichKeyMs = settings['which_key_delay_ms'];
+      if (whichKeyMs is int) {
+        whichKeyDelay = Duration(milliseconds: whichKeyMs);
       }
       final chars = settings['hint_chars'];
       if (chars is String) {
@@ -72,6 +79,7 @@ class QuillConfig {
     return QuillConfig(
       bindings: bindings,
       chordTimeout: chordTimeout,
+      whichKeyDelay: whichKeyDelay,
       hintChars: hintChars,
     );
   }
@@ -99,12 +107,16 @@ class QuillConfig {
     }
 
     const defaultTimeout = Duration(milliseconds: 1500);
+    const defaultWhichKeyDelay = Duration(milliseconds: 400);
     const defaultHintChars = 'asdfghjkl';
 
     return QuillConfig(
       bindings: merged,
       chordTimeout:
           other.chordTimeout != defaultTimeout ? other.chordTimeout : chordTimeout,
+      whichKeyDelay: other.whichKeyDelay != defaultWhichKeyDelay
+          ? other.whichKeyDelay
+          : whichKeyDelay,
       hintChars: other.hintChars != defaultHintChars ? other.hintChars : hintChars,
     );
   }

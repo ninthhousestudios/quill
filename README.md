@@ -16,6 +16,7 @@ vim-mode, but most "standard" browsers should serve the example just fine.
 - **TOML config**: Human-readable binding files. Overlay user config on app defaults. Use different files as "profiles".
 - **Named actions**: All actions are strings. Bindings map chords to names; your app registers callbacks. Config and code stay decoupled.
 - **Auto insert mode**: Quill detects when a `TextField` gains focus and switches to Insert mode automatically. Escape returns to Normal and releases focus from the field.
+- **Which-key support**: After a configurable delay on partial chord input, exposes available continuations so apps can build which-key style discovery guides.
 - **Status bar**: Drop-in widget showing current mode and partial chord in progress.
 
 ## Design Principle: Hint Everything
@@ -42,6 +43,7 @@ import 'package:quill_keys/quill.dart';
 const tomlConfig = '''
 [settings]
 chord_timeout_ms = 1500
+which_key_delay_ms = 400
 hint_chars = "asdfghjkl"
 
 [normal]
@@ -95,6 +97,7 @@ class MyApp extends StatelessWidget {
 ```toml
 [settings]
 chord_timeout_ms = 1500       # Timeout for multi-key chords (ms)
+which_key_delay_ms = 400      # Delay before showing which-key guide (ms)
 hint_chars = "asdfghjkl"       # Characters used for hint labels (home row)
 
 [normal]
@@ -219,6 +222,32 @@ QuillStatusBar(
   chordStyle: TextStyle(fontFamily: 'monospace'),
 )
 ```
+
+## Which-Key Support
+
+Quill exposes chord continuation data so apps can build which-key style guides — popups that show available next keys after a partial chord.
+
+```dart
+final controller = QuillScope.of(context);
+
+// After the which-key delay elapses on a partial chord:
+if (controller.shouldShowWhichKey) {
+  final continuations = controller.continuations;
+  for (final c in continuations) {
+    print('${c.key} → ${c.actionName ?? "..."}');
+    // e.g. "t → next-tab", "T → prev-tab", "g → scroll-top"
+  }
+}
+```
+
+Configure the delay in TOML:
+
+```toml
+[settings]
+which_key_delay_ms = 400   # default; set to 0 for immediate
+```
+
+Quill manages the timing; your app builds the UI. `shouldShowWhichKey` resets automatically on match, timeout, or mode change.
 
 ## Architecture
 

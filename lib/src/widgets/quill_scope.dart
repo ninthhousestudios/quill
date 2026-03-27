@@ -73,7 +73,9 @@ class QuillController extends ChangeNotifier {
         keyMatcher = KeyMatcher(config.bindings),
         actionRegistry = ActionRegistry() {
     keyMatcher.chordTimeout = config.chordTimeout;
+    keyMatcher.whichKeyDelay = config.whichKeyDelay;
     keyMatcher.onTimeout = notifyListeners;
+    keyMatcher.onWhichKey = notifyListeners;
 
     // Notify UI when mode changes.
     modeStack.onModeChanged.listen((_) => notifyListeners());
@@ -89,6 +91,13 @@ class QuillController extends ChangeNotifier {
 
   /// The keys fed so far in the current partial chord (empty if none).
   String get partialChord => keyMatcher.partialChord;
+
+  /// Whether the which-key delay has elapsed and a guide should be shown.
+  bool get shouldShowWhichKey => keyMatcher.shouldShowWhichKey;
+
+  /// The available next keys from the current trie position for the active mode.
+  List<ChordContinuation> get continuations =>
+      keyMatcher.continuations(currentMode);
 
   /// The currently active mode.
   QuillMode get currentMode => modeStack.current;

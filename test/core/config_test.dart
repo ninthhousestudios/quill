@@ -92,6 +92,35 @@ hint_chars = "fjdksla"
       expect(insert![KeyChord.parse('<Escape>')], equals('normal-mode'));
     });
 
+    test('fromToml parses which_key_delay_ms', () {
+      const toml = '''
+[settings]
+which_key_delay_ms = 300
+''';
+      final config = QuillConfig.fromToml(toml);
+      expect(config.whichKeyDelay, equals(const Duration(milliseconds: 300)));
+    });
+
+    test('whichKeyDelay defaults to 400ms when missing', () {
+      const toml = '''
+[settings]
+chord_timeout_ms = 1000
+''';
+      final config = QuillConfig.fromToml(toml);
+      expect(config.whichKeyDelay, equals(const Duration(milliseconds: 400)));
+    });
+
+    test('merge respects non-default whichKeyDelay', () {
+      const base = QuillConfig(
+        whichKeyDelay: Duration(milliseconds: 400),
+      );
+      const overlay = QuillConfig(
+        whichKeyDelay: Duration(milliseconds: 250),
+      );
+      final merged = base.merge(overlay);
+      expect(merged.whichKeyDelay, equals(const Duration(milliseconds: 250)));
+    });
+
     test('fromToml empty section does not crash', () {
       const toml = '[normal]\n';
       final config = QuillConfig.fromToml(toml);

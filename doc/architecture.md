@@ -12,7 +12,7 @@ lib/
   src/
     core/                       # pure Dart — no Flutter imports
       mode.dart                 # QuillMode, ModeStack
-      key_matcher.dart          # KeyChord, KeyMatcher (trie), KeyMatchResult
+      key_matcher.dart          # KeyChord, KeyMatcher (trie), KeyMatchResult, ChordContinuation
       action_registry.dart      # ActionRegistry
       config.dart               # QuillConfig, TOML parsing
       hint_labels.dart          # HintLabelGenerator
@@ -114,7 +114,11 @@ Normal mode trie:
 
 **Chord timeout:** Default 1.5 seconds. If the timer fires during a partial match, position resets to root and `onTimeout` is called (so the UI can update the status bar). Timer restarts on each new key during a partial.
 
-**Greedy matching:** If a node is both terminal and has children (e.g. `g` is bound AND `gt` is bound), the terminal match fires immediately. This is standard vim behavior — there is no lookahead delay. In practice, avoid binding a key that is also the prefix of a chord.
+**Which-key delay:** A second, shorter timer (default 400ms) starts alongside the chord timeout on any `PartialMatch`. When it fires, `shouldShowWhichKey` becomes `true` and `onWhichKey` is called. Apps use this signal along with `continuations(mode)` to show a which-key guide listing available next keys. Both timers reset atomically on match, timeout, or explicit `reset()`.
+
+**`continuations(mode)`:** Returns a `List<ChordContinuation>` describing each child of the current trie node — the available next keys. Each entry has `key` (the key to press), `actionName` (non-null if pressing this key completes a chord), and `hasChildren` (true if pressing this key leads to deeper chords). Callable at any time — at root it returns all top-level keys for the mode.
+
+**Greedy matching:** If a node is both terminal and has children (e.g. `g` is bound AND `gt` is bound), the terminal match fires immediately. This is standard vim behavior — there is no lookahead delay. In practice, avoid binding a key that is also the prefix of a chord. Note: greedy matching means the which-key timer never starts for these keys, since `MatchFound` fires instantly.
 
 ### KeyChord
 
@@ -145,6 +149,7 @@ Parsed from TOML. Structure:
 ```toml
 [settings]
 chord_timeout_ms = 1500
+which_key_delay_ms = 400
 hint_chars = "asdfghjkl"
 
 [normal]
@@ -181,6 +186,9 @@ This produces labels like `a, s, d, f, g, h, j, k, la, ls, ld, lf` for 12 items 
 `QuillController` extends `ChangeNotifier` and fires on:
 - Mode changes (via ModeStack stream listener)
 - Key match / partial match / timeout (after each `handleKeyEvent` call)
+- Which-key delay elapsed (via `onWhichKey` callback)
+
+The controller proxies `shouldShowWhichKey` and `continuations` from `KeyMatcher` for convenient widget-layer access.
 
 Descendants access it via `QuillScope.of(context)`, which triggers rebuilds on any notification.
 
@@ -227,10 +235,18 @@ QuillController.handleKeyEvent(KeyDownEvent('g'))
   ▼
 KeyMatcher.feed('g', NormalMode)
   → PartialMatch (node has children: 't', 'T')
-  → chord timer starts (1.5s)
+  → chord timer starts (1.5s), which-key timer starts (400ms)
   → partialChord = "g"
   → notifyListeners() → StatusBar rebuilds, shows "g"
   → return KeyEventResult.handled
+  │
+  ... 400ms later ...
+  │
+  ▼
+Which-key timer fires
+  → shouldShowWhichKey = true
+  → onWhichKey() → notifyListeners()
+  → App can now read continuations: [{key: 't', action: 'next-tab'}, {key: 'T', action: 'prev-tab'}]
   │
   ▼
 QuillController.handleKeyEvent(KeyDownEvent('t'))

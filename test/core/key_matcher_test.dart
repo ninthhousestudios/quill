@@ -270,6 +270,28 @@ void main() {
       });
     });
 
+    test('onTimeout resets shouldShowWhichKey', () {
+      fakeAsync((async) {
+        final matcher = KeyMatcher(
+          {
+            normal: {KeyChord.parse('gt'): 'next-tab'},
+          },
+          chordTimeout: const Duration(milliseconds: 200),
+          whichKeyDelay: const Duration(milliseconds: 50),
+        );
+
+        matcher.feed('g', normal);
+        async.elapse(const Duration(milliseconds: 50));
+        expect(matcher.shouldShowWhichKey, isTrue);
+
+        // Chord timeout fires — which-key resets.
+        async.elapse(const Duration(milliseconds: 150));
+        expect(matcher.shouldShowWhichKey, isFalse);
+
+        matcher.dispose();
+      });
+    });
+
     test('dispose cancels timer — onTimeout not called', () {
       fakeAsync((async) {
         var timeoutFired = false;
@@ -286,6 +308,191 @@ void main() {
 
         async.elapse(const Duration(milliseconds: 200));
         expect(timeoutFired, isFalse);
+      });
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // continuations()
+  // ---------------------------------------------------------------------------
+  group('continuations', () {
+    late KeyMatcher matcher;
+
+    setUp(() {
+      matcher = KeyMatcher({
+        normal: {
+          KeyChord.parse('gt'): 'next-tab',
+          KeyChord.parse('gT'): 'prev-tab',
+          KeyChord.parse('gg'): 'scroll-top',
+          KeyChord.parse('j'): 'scroll-down',
+        },
+      });
+    });
+
+    tearDown(() => matcher.dispose());
+
+    test('at root returns all top-level keys', () {
+      final conts = matcher.continuations(normal);
+      final keys = conts.map((c) => c.key).toSet();
+      expect(keys, equals({'g', 'j'}));
+    });
+
+    test('after partial returns children of current node', () {
+      matcher.feed('g', normal);
+      final conts = matcher.continuations(normal);
+      final keys = conts.map((c) => c.key).toSet();
+      expect(keys, equals({'t', 'T', 'g'}));
+    });
+
+    test('terminal children have actionName set', () {
+      matcher.feed('g', normal);
+      final conts = matcher.continuations(normal);
+      final nextTab = conts.firstWhere((c) => c.key == 't');
+      expect(nextTab.actionName, equals('next-tab'));
+      expect(nextTab.hasChildren, isFalse);
+    });
+
+    test('intermediate node at root has null actionName and hasChildren', () {
+      final conts = matcher.continuations(normal);
+      final g = conts.firstWhere((c) => c.key == 'g');
+      expect(g.actionName, isNull);
+      expect(g.hasChildren, isTrue);
+    });
+
+    test('returns empty list for mode with no bindings', () {
+      expect(matcher.continuations(insert), isEmpty);
+    });
+
+    test('resets to root continuations after match completes', () {
+      matcher.feed('g', normal);
+      matcher.feed('t', normal); // completes 'gt'
+      final conts = matcher.continuations(normal);
+      final keys = conts.map((c) => c.key).toSet();
+      expect(keys, equals({'g', 'j'}));
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // Which-key timer
+  // ---------------------------------------------------------------------------
+  group('which-key timer', () {
+    test('shouldShowWhichKey becomes true after delay', () {
+      fakeAsync((async) {
+        final matcher = KeyMatcher(
+          {
+            normal: {KeyChord.parse('gt'): 'next-tab'},
+          },
+          whichKeyDelay: const Duration(milliseconds: 50),
+        );
+
+        expect(matcher.shouldShowWhichKey, isFalse);
+        matcher.feed('g', normal);
+        expect(matcher.shouldShowWhichKey, isFalse);
+
+        async.elapse(const Duration(milliseconds: 50));
+        expect(matcher.shouldShowWhichKey, isTrue);
+
+        matcher.dispose();
+      });
+    });
+
+    test('onWhichKey callback fires after delay', () {
+      fakeAsync((async) {
+        var callbackFired = false;
+        final matcher = KeyMatcher(
+          {
+            normal: {KeyChord.parse('gt'): 'next-tab'},
+          },
+          whichKeyDelay: const Duration(milliseconds: 50),
+          onWhichKey: () => callbackFired = true,
+        );
+
+        matcher.feed('g', normal);
+        expect(callbackFired, isFalse);
+
+        async.elapse(const Duration(milliseconds: 50));
+        expect(callbackFired, isTrue);
+
+        matcher.dispose();
+      });
+    });
+
+    test('resets on match completion', () {
+      fakeAsync((async) {
+        final matcher = KeyMatcher(
+          {
+            normal: {KeyChord.parse('gt'): 'next-tab'},
+          },
+          whichKeyDelay: const Duration(milliseconds: 50),
+        );
+
+        matcher.feed('g', normal);
+        async.elapse(const Duration(milliseconds: 50));
+        expect(matcher.shouldShowWhichKey, isTrue);
+
+        matcher.feed('t', normal); // match found — resets
+        expect(matcher.shouldShowWhichKey, isFalse);
+
+        matcher.dispose();
+      });
+    });
+
+    test('resets on explicit reset()', () {
+      fakeAsync((async) {
+        final matcher = KeyMatcher(
+          {
+            normal: {KeyChord.parse('gt'): 'next-tab'},
+          },
+          whichKeyDelay: const Duration(milliseconds: 50),
+        );
+
+        matcher.feed('g', normal);
+        async.elapse(const Duration(milliseconds: 50));
+        expect(matcher.shouldShowWhichKey, isTrue);
+
+        matcher.reset();
+        expect(matcher.shouldShowWhichKey, isFalse);
+
+        matcher.dispose();
+      });
+    });
+
+    test('does not fire on NoMatch', () {
+      fakeAsync((async) {
+        var callbackFired = false;
+        final matcher = KeyMatcher(
+          {
+            normal: {KeyChord.parse('gt'): 'next-tab'},
+          },
+          whichKeyDelay: const Duration(milliseconds: 50),
+          onWhichKey: () => callbackFired = true,
+        );
+
+        matcher.feed('z', normal); // NoMatch — no timer started
+        async.elapse(const Duration(milliseconds: 100));
+        expect(callbackFired, isFalse);
+        expect(matcher.shouldShowWhichKey, isFalse);
+
+        matcher.dispose();
+      });
+    });
+
+    test('dispose cancels which-key timer', () {
+      fakeAsync((async) {
+        var callbackFired = false;
+        final matcher = KeyMatcher(
+          {
+            normal: {KeyChord.parse('gt'): 'next-tab'},
+          },
+          whichKeyDelay: const Duration(milliseconds: 50),
+          onWhichKey: () => callbackFired = true,
+        );
+
+        matcher.feed('g', normal);
+        matcher.dispose();
+
+        async.elapse(const Duration(milliseconds: 100));
+        expect(callbackFired, isFalse);
       });
     });
   });

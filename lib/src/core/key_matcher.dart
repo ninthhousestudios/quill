@@ -140,6 +140,35 @@ final class NoMatch extends KeyMatchResult {
 }
 
 // ---------------------------------------------------------------------------
+// ChordContinuation
+// ---------------------------------------------------------------------------
+
+/// Describes one available next key from the current trie position.
+///
+/// Used by which-key guides to show what chords are available.
+class ChordContinuation {
+  /// The key that can be pressed next.
+  final String key;
+
+  /// The action name if pressing this key completes a chord, or `null` if
+  /// this key leads to further children only.
+  final String? actionName;
+
+  /// Whether pressing this key leads to further children (deeper chords).
+  final bool hasChildren;
+
+  const ChordContinuation({
+    required this.key,
+    this.actionName,
+    required this.hasChildren,
+  });
+
+  @override
+  String toString() =>
+      'ChordContinuation($key, action: $actionName, hasChildren: $hasChildren)';
+}
+
+// ---------------------------------------------------------------------------
 // Internal trie
 // ---------------------------------------------------------------------------
 
@@ -163,18 +192,28 @@ class KeyMatcher {
   /// How long to wait for the next key before abandoning a partial chord.
   Duration chordTimeout;
 
+  /// How long to wait after a partial match before signalling which-key.
+  Duration whichKeyDelay;
+
   /// Called when the chord timer fires. Use this to notify the UI layer.
   void Function()? onTimeout;
+
+  /// Called when the which-key delay fires. Use this to show a which-key guide.
+  void Function()? onWhichKey;
 
   final Map<QuillMode, _TrieNode> _roots = {};
   final Map<QuillMode, _TrieNode> _current = {};
   final List<String> _partialKeys = [];
   Timer? _timer;
+  Timer? _whichKeyTimer;
+  bool _showWhichKey = false;
 
   KeyMatcher(
     Map<QuillMode, Map<KeyChord, String>> bindings, {
     this.chordTimeout = const Duration(milliseconds: 1500),
+    this.whichKeyDelay = const Duration(milliseconds: 400),
     this.onTimeout,
+    this.onWhichKey,
   }) {
     for (final entry in bindings.entries) {
       final mode = entry.key;
@@ -244,10 +283,36 @@ class KeyMatcher {
   /// Empty string when no partial chord is in progress.
   String get partialChord => _partialKeys.join();
 
+  /// Whether the which-key delay has elapsed during the current partial chord.
+  ///
+  /// Becomes `true` after [whichKeyDelay] elapses following a [PartialMatch].
+  /// Resets to `false` on match, timeout, or [reset].
+  bool get shouldShowWhichKey => _showWhichKey;
+
+  /// The available next keys from the current trie position for [mode].
+  ///
+  /// At the root (no partial chord), returns all top-level keys for the mode.
+  /// After a partial match, returns the children of the current node.
+  /// Returns an empty list if [mode] has no bindings.
+  List<ChordContinuation> continuations(QuillMode mode) {
+    final root = _roots[mode];
+    if (root == null) return const [];
+    final node = _current[mode] ?? root;
+    return node.children.entries
+        .map((e) => ChordContinuation(
+              key: e.key,
+              actionName: e.value.actionName,
+              hasChildren: e.value.children.isNotEmpty,
+            ))
+        .toList();
+  }
+
   /// Cancel the active chord timer and release resources.
   void dispose() {
     _timer?.cancel();
     _timer = null;
+    _whichKeyTimer?.cancel();
+    _whichKeyTimer = null;
   }
 
   // -------------------------------------------------------------------------
@@ -259,15 +324,26 @@ class KeyMatcher {
     _partialKeys.clear();
     _timer?.cancel();
     _timer = null;
+    _whichKeyTimer?.cancel();
+    _whichKeyTimer = null;
+    _showWhichKey = false;
   }
 
   void _startTimer() {
     _timer?.cancel();
     _timer = Timer(chordTimeout, _onTimerFired);
+    _whichKeyTimer?.cancel();
+    _showWhichKey = false;
+    _whichKeyTimer = Timer(whichKeyDelay, _onWhichKeyFired);
   }
 
   void _onTimerFired() {
     _resetPosition();
     onTimeout?.call();
+  }
+
+  void _onWhichKeyFired() {
+    _showWhichKey = true;
+    onWhichKey?.call();
   }
 }

@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.1.0
+
+### Added
+- **Which-key support**: `ChordContinuation` data class and `KeyMatcher.continuations(mode)` method expose available next keys from the current trie position, enabling apps to build which-key style chord discovery guides
+- **Which-key delay timer**: `KeyMatcher.shouldShowWhichKey` becomes true after a configurable delay on partial match; `onWhichKey` callback fires when the delay elapses
+- `which_key_delay_ms` TOML setting (default: 400ms) in `[settings]` section
+- `QuillController.shouldShowWhichKey` and `QuillController.continuations` proxy getters for the widget layer
+
 ## 1.0.1
 
 ### Fixed
