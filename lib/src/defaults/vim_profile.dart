@@ -4,7 +4,7 @@
 const vimProfileToml = '''
 [settings]
 chord_timeout_ms = 1500
-hint_chars = "asdfghjkl"
+hint_chars = "asdghjkl"
 
 # --- Normal mode -----------------------------------------------------------
 [normal]
@@ -34,4 +34,6 @@ jk = "normal-mode"
 # --- Hint mode --------------------------------------------------------------
 [hint]
 "<Escape>" = "normal-mode"
+f = "normal-mode"
+jk = "normal-mode"
 ''';

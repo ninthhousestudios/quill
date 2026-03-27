@@ -6,7 +6,7 @@
 const qutebrowserProfileToml = '''
 [settings]
 chord_timeout_ms = 1500
-hint_chars = "asdfghjkl"
+hint_chars = "asdghjkl"
 
 # --- Normal mode -----------------------------------------------------------
 [normal]
@@ -52,4 +52,6 @@ D = "toggle-dark-mode"
 # --- Hint mode --------------------------------------------------------------
 [hint]
 "<Escape>" = "normal-mode"
+f = "normal-mode"
+"<A-i>" = "normal-mode"
 ''';

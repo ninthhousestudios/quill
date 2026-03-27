@@ -65,6 +65,18 @@ class _HintOverlayState extends State<HintOverlay> {
       return KeyEventResult.handled;
     }
 
+    // Before consuming as hint label input, check if this key matches a
+    // [hint] mode binding (e.g. 'f' → normal-mode). This lets TOML-configured
+    // exit keys work without being swallowed by the label matcher.
+    final bindingResult = ctrl.handleKeyEvent(event);
+    if (bindingResult == KeyEventResult.handled) {
+      // The binding fired (e.g. normal-mode). If it exited hint mode, clean up.
+      if (ctrl.currentMode is! HintMode) {
+        setState(() => _typed = '');
+      }
+      return KeyEventResult.handled;
+    }
+
     // Printable single character.
     final label = logical.keyLabel;
     if (label.length == 1) {
