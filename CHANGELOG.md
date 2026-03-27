@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.0.1
+
+### Fixed
+- Hint mode now exits when pressing `f` again (toggle behavior)
+- Profile-specific escape keys (`jk` in vim, `Alt-i` in qutebrowser) now work in hint mode
+- HintOverlay delegates to TOML `[hint]` bindings before consuming keys as label input, so users can configure custom exit keys
+- Removed `f` from default `hint_chars` to avoid conflict with the exit binding
+
 ## 1.0.0
 
 Initial release.
